@@ -4,3 +4,6 @@
 __pycache__
 .prototype
 ./app/temp_audio
+
+# 가상환경 파일
+gganbu
