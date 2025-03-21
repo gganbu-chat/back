@@ -1,5 +1,13 @@
-# openai_api 연결
-OPENAI_API_KEY=yourkey
-# PostgreSQL 데이터베이스 연결
-DATABASE_URL=postgresql://username:yourpasswd@yourDB:db_prot/db_name
+# DB 정보 입력
+DB_HOST=<DB_HOST>
+DB_USER=<DB_USER>
+DB_PASS=<DB_PASS>
+DB_PORT=<DB_PORT>
+DB_NAME=<DB_NAME>
 
+# openai_api 연결
+OPENAI_API_KEY=<yourkey>
+
+# 도메인 설정
+CLIENT_DOMAIN=http://localhost:3000
+WS_SERVER_DOMAIN=ws://localhost:8001
