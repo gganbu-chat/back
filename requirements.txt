@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+python-dotenv
+langchain
+openai
+psycopg2-binary
+langchain_openai
+pika
+python-jose
+python-multipart
+wordcloud
+websockets

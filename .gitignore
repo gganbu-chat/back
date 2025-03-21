@@ -1,0 +1,6 @@
+# misc
+.env
+.DS_Store
+__pycache__
+.prototype
+./app/temp_audio
