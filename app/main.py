@@ -1,7 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, APIRouter, Query, Body # FastAPI 프레임워크 및 종속성 주입 도구
-from fastapi.responses import FileResponse
-from sqlalchemy.sql.expression import case
-from sqlalchemy import select,cast,String
+from fastapi import FastAPI, Depends, HTTPException, Query, Body # FastAPI 프레임워크 및 종속성 주입 도구
+from sqlalchemy import select
 from sqlalchemy.sql import func
 from sqlalchemy.orm import Session # SQLAlchemy 세션 관리
 
@@ -20,15 +18,7 @@ from pathlib import Path  # 파일 경로 조작을 위한 모듈
 from fastapi.staticfiles import StaticFiles
 
 
-
-
-# from auth import verify_token
-
-# RabbitMQ 파트
-import pika
 import json
-import time
-import base64
 import os
 
 import user
@@ -49,19 +39,6 @@ app.include_router(image.router, tags=["Images"])
 UPLOAD_DIR = "./uploads/characters"
 app.mount("/images", StaticFiles(directory=UPLOAD_DIR), name="images")
 app.mount("/static", StaticFiles(directory=UPLOAD_DIR), name="static")
-
-# RabbitMQ 연결 설정
-# 배포용 PC 에 rabbitMQ 서버 및 GPU서버 세팅 완료 - 250102 민식 
-# .env 파일 수정후 사용 (슬랙 공지 참고)
-RABBITMQ_HOST = os.getenv("RBMQ_HOST")
-RABBITMQ_PORT = os.getenv("RBMQ_PORT")
-RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")  # RabbitMQ 사용자 (기본값: guest)
-RABBITMQ_PASSWORD = os.getenv("RABBITMQ_PASSWORD", "guest")  # RabbitMQ 비밀번호 (기본값: guest)
-
-REQUEST_IMG_QUEUE = "image_generation_requests" # 이미지 요청
-RESPONSE_IMG_QUEUE = "image_generation_responses" #
-REQUEST_TTS_QUEUE = "tts_generation_requests" # TTS 요청
-RESPONSE_TTS_QUEUE = "tts_generation_responses" #
 
 CLIENT_DOMAIN = os.getenv("CLIENT_DOMAIN")
 WS_SERVER_DOMAIN = os.getenv("WS_SERVER_DOMAIN")
@@ -93,11 +70,6 @@ def get_db():
         db.close()
 
 # ====== Pydantic 스키마 ======
-## 스키마 사용 이유
-
-
-
-
 
 # 채팅방 생성 요청 스키마
 class CreateRoomSchema(BaseModel):
@@ -129,7 +101,7 @@ class CreateCharacterSchema(BaseModel):
     """
     character_owner: int
     field_idx: int
-    voice_idx: str
+    voice_idx: Optional[str] = None
     char_name: str
     char_description: str
     nicknames: Optional[dict] = {30: "stranger", 70: "friend", 100: "best friend"}
@@ -198,26 +170,6 @@ class TTSRequest(BaseModel):
     speaker: str = "paimon"
     language: str
     speed: float = 1.0
-
-# image, tts 큐 분리하기위한 코드 추가 - 1230 민식 
-def get_rabbitmq_channel(req_que, res_que):
-    """
-    RabbitMQ 연결 및 채널 반환
-    """
-
-    credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASSWORD)  # ID와 PW 설정
-
-    connection = pika.BlockingConnection(
-        pika.ConnectionParameters(
-            host=RABBITMQ_HOST, 
-            port=RABBITMQ_PORT, 
-            credentials=credentials,
-            heartbeat=6000)
-    )
-    channel = connection.channel()
-    channel.queue_declare(queue=req_que, durable=True)
-    channel.queue_declare(queue=res_que, durable=True)
-    return connection, channel
 
 
 # ====== API 엔드포인트 ======
@@ -423,10 +375,11 @@ def get_chat_room_info(room_id: str, db: Session = Depends(get_db)):
     """
     try:
         chat_data = (
-            db.query(ChatRoom, CharacterPrompt, Character, Voice)
+            db.query(ChatRoom, CharacterPrompt, Character)
+            # db.query(ChatRoom, CharacterPrompt, Character, Voice)
             .join(CharacterPrompt, ChatRoom.char_prompt_id == CharacterPrompt.char_prompt_id)
             .join(Character, CharacterPrompt.char_idx == Character.char_idx)
-            .join(Voice, Character.voice_idx == Voice.voice_idx)
+            # .outerjoin(Voice, Character.voice_idx == Voice.voice_idx)
             .filter(ChatRoom.chat_id == room_id, ChatRoom.is_active == True)
             .first()
         )
@@ -434,7 +387,8 @@ def get_chat_room_info(room_id: str, db: Session = Depends(get_db)):
         if not chat_data:
             raise HTTPException(status_code=404, detail="해당 채팅방 정보를 찾을 수 없습니다.")
         
-        chat, prompt, character, voice = chat_data
+        chat, prompt, character = chat_data
+        # chat, prompt, character, voice = chat_data
 
         return {
             "chat_id": chat.chat_id,
@@ -451,8 +405,8 @@ def get_chat_room_info(room_id: str, db: Session = Depends(get_db)):
             "character_background": prompt.character_background,
             "character_speech_style": prompt.character_speech_style,
             "example_dialogues": prompt.example_dialogues,
-            "voice_path": voice.voice_path,
-            "voice_speaker": voice.voice_speaker,
+            # "voice_path": voice.voice_path,
+            # "voice_speaker": voice.voice_speaker,
         }
     except Exception as e:
         print(f"Error fetching chat room info: {str(e)}")
@@ -927,106 +881,6 @@ def delete_character(char_idx: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": f"캐릭터 {char_idx}이(가) 성공적으로 삭제되었습니다."}
 
-# 이미지 생성 요청 API
-@app.post("/generate-image/")
-def send_to_queue(request: ImageRequest):
-    """
-    RabbitMQ 큐에 이미지 생성 요청을 추가하고, 결과를 대기.
-    """
-    try:
-        # RabbitMQ 연결
-        # connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
-        connection, channel = get_rabbitmq_channel(REQUEST_IMG_QUEUE, RESPONSE_IMG_QUEUE)
-        request_id = str(uuid.uuid4())
-
-        # 요청 메시지 작성
-        message = {
-            "id": request_id,
-            "prompt": request.prompt,
-            "negative_prompt": request.negative_prompt,
-            "width": request.width,
-            "height": request.height,
-            "guidance_scale": request.guidance_scale,
-            "num_inference_steps": request.num_inference_steps,
-        }
-
-        # 메시지를 요청 큐에 추가
-        channel.basic_publish(
-            exchange="",
-            routing_key=REQUEST_IMG_QUEUE,
-            body=json.dumps(message),
-            properties=pika.BasicProperties(delivery_mode=1),
-        )
-        print(f"이미지 생성 요청 전송: {request_id}")
-
-        # 응답 큐에서 결과 대기
-        for _ in range(6000):  # 최대 600초 대기 ( 100분 )
-            method, properties, body = channel.basic_get(RESPONSE_IMG_QUEUE, auto_ack=True)
-            if body:
-                response = json.loads(body)
-                if response["id"] == request_id:
-                    connection.close()
-                    return {"image": response["image"]}
-            time.sleep(1)
-
-        connection.close()
-        raise HTTPException(status_code=504, detail="응답 시간 초과")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# 
-# TTS 생성 요청 API
-@app.post("/generate-tts/")
-def send_to_queue(request: TTSRequest):
-    try:
-        connection, channel = get_rabbitmq_channel(REQUEST_TTS_QUEUE, RESPONSE_TTS_QUEUE)
-        request_id = str(uuid.uuid4())
-        message = {
-            "id": request_id,
-            "text": request.text,
-            "speaker": request.speaker,
-            "language": request.language,
-            "speed": request.speed,
-        }
-
-        channel.basic_publish(
-            exchange="",
-            routing_key=REQUEST_TTS_QUEUE,
-            body=json.dumps(message),
-            properties=pika.BasicProperties(delivery_mode=1),
-        )
-        print(f"TTS 요청 데이터: {message}")
-
-        for _ in range(6000):  # 최대 600초 대기
-            method, properties, body = channel.basic_get(RESPONSE_TTS_QUEUE, auto_ack=True)
-            if body:
-                response = json.loads(body)
-                print(f"TTS 응답 데이터: {response}")
-                if response["id"] == request_id:
-                    connection.close()
-                    if response["status"] == "success":
-                        audio_base64 = response["audio_base64"]
-                        # print("audio_base64 ", audio_base64)
-                        audio_data = base64.b64decode(audio_base64)
-
-                        output_path = f"temp_audio/{request_id}.wav"
-                        with open(output_path, "wb") as f:
-                            f.write(audio_data)
-
-                        return FileResponse(
-                            path=output_path,
-                            media_type="audio/wav",
-                            filename="output_audio.wav"
-                        )
-                    else:
-                        raise HTTPException(status_code=500, detail=response["error"])
-
-        connection.close()
-        raise HTTPException(status_code=504, detail="응답 시간 초과")
-    except Exception as e:
-        print(f"Exception 발생: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 # TTS 모델 정보 조회 API
 @app.get("/api/ttsmodel/{room_id}")
