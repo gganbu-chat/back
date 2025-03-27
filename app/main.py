@@ -25,6 +25,7 @@ import user
 import wordcloud_router
 import search
 import image
+import stableDiff
 
 
 # FastAPI 앱 초기화
@@ -34,8 +35,9 @@ app.include_router(user.router)
 app.include_router(wordcloud_router.router, prefix="/api", tags=["WordCloud"])
 app.include_router(search.router, tags=["Search"])
 app.include_router(image.router, tags=["Images"])
+app.include_router(stableDiff.router, tags=["StableDiffusion"])
 
-# 이미지 경로 - OS 따라 경로 변하는 이슈로 인해 os 패키지 사용 (김민식)
+# 이미지 경로 - OS 따라 경로 변하는 이슈로 인해 os 패키지 사용
 UPLOAD_DIR = "./uploads/characters"
 app.mount("/images", StaticFiles(directory=UPLOAD_DIR), name="images")
 app.mount("/static", StaticFiles(directory=UPLOAD_DIR), name="static")
@@ -47,10 +49,8 @@ WS_SERVER_DOMAIN = os.getenv("WS_SERVER_DOMAIN")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://gganbu.9seebird.site",
-        "https://gganbu.9seebird.site",
         CLIENT_DOMAIN
-    ],  # http와 https 모두 허용,  # 모든 도메인 허용
+    ],  # 도메인 허용
     allow_credentials=True, # 자격 증명 허용 (쿠키 등)
     allow_methods=["*"], # 모든 HTTP 메서드 허용 (GET, POST 등)
     allow_headers=["*"], # 모든 HTTP 헤더 허용
@@ -491,7 +491,7 @@ async def query_langchain(room_id: str, message: MessageSchema, db: Session = De
 
         # --------------------대화 내역 가져오기--------------------
         chat_history = get_chat_history(db, room_id)
-        print("Chat History being sent to LangChain:", chat_history)
+        # print("Chat History being sent to LangChain:", chat_history)
 
         # LangChain 서버로 보낼 요청 데이터 준비
         request_data = {
@@ -508,9 +508,8 @@ async def query_langchain(room_id: str, message: MessageSchema, db: Session = De
             "example_dialogues": example_dialogues, # 예시 대화
             "chat_history": chat_history # 채팅 기록
         }
-        print("Full request data:", request_data)  # 로그 추가
 
-        print("Sending request to LangChain:", request_data)  # 디버깅용
+        # print("Sending request to LangChain:", request_data)  # 디버깅용
 
         # LangChain 서버와 WebSocket 통신
         response_data = await send_to_langchain(request_data, room_id)

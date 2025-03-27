@@ -104,6 +104,18 @@ class Image(Base):
     img_idx = Column(Integer, primary_key=True, autoincrement=True)
     file_path = Column(String(255), nullable=False)
 
+# 캐릭터 이미지 생성 프롬프트
+class ImagePrompt(Base):
+    __tablename__ = "images_prompts"
+
+    images_prompts_idx = Column(Integer, primary_key=True, autoincrement=True)
+    img_idx = Column(Integer, ForeignKey("images.img_idx"), nullable=False)
+    file_path = Column(Text, nullable=False)
+    prompt_content = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+    updated_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+    version = Column(Integer, nullable=False)
+
 # Chats 테이블
 class ChatRoom(Base):
     __tablename__ = "chat_rooms"
@@ -194,18 +206,6 @@ class GroupChatCharacter(Base):
     group_chars_idx = Column(Integer, primary_key=True, autoincrement=True)
     group_chat_idx = Column(Integer, ForeignKey("group_chats.group_chat_idx"), nullable=False)
     char_idx = Column(Integer, ForeignKey("characters.char_idx"), nullable=False)
-    
-
-# 캐릭터 이미지 생성 프롬프트
-class ImagePrompt(Base):
-    __tablename__ = "images_prompts"
-
-    images_prompts_idx = Column(Integer, primary_key=True, autoincrement=True)
-    file_path = Column(Text, nullable=False)
-    prompt_content = Column(Text, nullable=False)
-    created_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
-    updated_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
-    version = Column(Integer, nullable=False)
 
 # 테이블 생성
 Base.metadata.create_all(bind=engine)

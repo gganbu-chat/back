@@ -32,7 +32,7 @@ DATABASE_URL=f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 SECRET_KEY = os.getenv("SECRET_KEY", "default_key")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 720
-UPLOAD_DIR = "uploads"  # Directory for uploaded files
+UPLOAD_DIR = "uploads/user_profiles"  # Directory for uploaded files
 
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL 환경 변수를 설정하세요.")
