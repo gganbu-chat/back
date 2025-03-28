@@ -1,7 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from database import SessionLocal, Image, ImagePrompt
 from diffusers import StableDiffusionPipeline
 import torch
 from datetime import datetime
@@ -9,24 +7,11 @@ from pathlib import Path
 import base64
 import uuid
 
+from app.database.session import get_db
+from app.models.models import Image, ImageMapping, ImagePrompt
+from app.schemas.stable_diffusion import GenerateImageRequest
+
 router = APIRouter()
-
-# 데이터베이스 세션 의존성
-def get_db():
-  db = SessionLocal()
-  try:
-    yield db
-  finally:
-    db.close()
-
-class GenerateImageRequest(BaseModel):
-  prompt: str
-  negative_prompt: str
-  width: int
-  height: int
-  guidance_scale: float
-  num_inference_steps: int
-
 
 # 모델 초기화 (앱 시작 시 1회)
 pipe = StableDiffusionPipeline.from_pretrained(
